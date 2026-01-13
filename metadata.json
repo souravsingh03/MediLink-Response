@@ -2,6 +2,7 @@
   "name": "MediLink Response",
   "description": "A real-time emergency coordination platform connecting ambulances, hospitals, and toll plazas for rapid critical care response.",
   "requestFramePermissions": [
-    "geolocation"
+    "geolocation",
+    "microphone"
   ]
 }

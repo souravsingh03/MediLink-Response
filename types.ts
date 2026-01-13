@@ -34,6 +34,14 @@ export interface Hospital {
   occupied: number;
 }
 
+export interface LiveVitals {
+  heartRate: number;
+  spo2: number;
+  bpSystolic: number;
+  bpDiastolic: number;
+  lastUpdated: number;
+}
+
 export interface ActiveTrip {
   id: string;
   ambulanceId: string;
@@ -41,8 +49,11 @@ export interface ActiveTrip {
   patientData: PatientData;
   triageResult: TriageResult;
   startTime: number;
-  etaMinutes: number;
+  initialEtaMinutes: number;
+  currentEtaMinutes: number;
+  progress: number; // 0 to 100
   status: 'EN_ROUTE' | 'ARRIVED';
+  liveVitals: LiveVitals;
 }
 
 export interface TollAlert {
@@ -52,4 +63,10 @@ export interface TollAlert {
   lane: string;
   timestamp: number;
   cleared: boolean;
+}
+
+export interface User {
+  id: string;
+  name: string;
+  role: 'PARAMEDIC' | 'HOSPITAL_ADMIN' | 'TOLL_OPERATOR';
 }
