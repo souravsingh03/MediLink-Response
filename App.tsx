@@ -1,12 +1,13 @@
+
 import React, { useState, useEffect } from 'react';
 import Layout from './components/Layout';
 import LoginView from './components/LoginView';
 import AmbulanceView from './components/AmbulanceView';
 import HospitalView from './components/HospitalView';
 import TollView from './components/TollView';
-import { ViewMode, Hospital, ActiveTrip, PatientData, TriageResult, TollAlert, User } from './types';
+import { ViewMode, Hospital, ActiveTrip, PatientData, TriageResult, TollAlert, User, Severity } from './types';
+import { Lock } from 'lucide-react';
 
-// Mock Data Configuration
 const MOCK_HOSPITALS: Hospital[] = [
   { id: 'h1', name: 'Central City Medical Center', distanceKm: 4.2, etaMinutes: 12, specialties: ['Trauma L1', 'Cardiology', 'Neurology'], capacity: 400, occupied: 85 },
   { id: 'h2', name: 'St. Mary’s Emergency', distanceKm: 8.5, etaMinutes: 18, specialties: ['Pediatrics', 'General Surgery'], capacity: 250, occupied: 45 },
@@ -19,63 +20,52 @@ const MOCK_TOLLS = ['Skyline Bridge Toll', 'Downtown Tunnel Gate', 'Highway 101 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [currentView, setCurrentView] = useState<ViewMode>(ViewMode.AMBULANCE);
-  
-  // Shared Application State
   const [activeTrips, setActiveTrips] = useState<ActiveTrip[]>([]);
   const [tollAlerts, setTollAlerts] = useState<TollAlert[]>([]);
 
-  // Simulate Live Updates (Vitals & Location)
   useEffect(() => {
     if (activeTrips.length === 0) return;
 
     const interval = setInterval(() => {
       setActiveTrips(currentTrips => 
         currentTrips.map(trip => {
-          // Simulate decreasing ETA and increasing progress
-          const newEta = Math.max(0, trip.currentEtaMinutes - 0.1); 
-          const totalTime = trip.initialEtaMinutes;
-          const progress = Math.min(100, ((totalTime - newEta) / totalTime) * 100);
+          const newEta = Math.max(0, trip.currentEtaMinutes - (2 / 60)); // Decrementing ETA
+          const progress = Math.min(100, ((trip.initialEtaMinutes - newEta) / trip.initialEtaMinutes) * 100);
 
-          // Simulate fluctuating vitals
-          const hrFluctuation = Math.floor(Math.random() * 5) - 2; // -2 to +2
-          const newHr = Math.min(180, Math.max(40, trip.liveVitals.heartRate + hrFluctuation));
+          // More realistic vital simulation: Critical patients have more volatility
+          const isCritical = trip.triageResult.severity === Severity.CRITICAL;
+          const volatility = isCritical ? 4 : 2;
+          
+          const hrDelta = Math.floor(Math.random() * volatility) - (volatility / 2);
+          const newHr = Math.min(160, Math.max(50, trip.liveVitals.heartRate + hrDelta));
 
-          const spo2Fluctuation = Math.random() > 0.8 ? -1 : (Math.random() > 0.8 ? 1 : 0);
-          const newSpo2 = Math.min(100, Math.max(85, trip.liveVitals.spo2 + spo2Fluctuation));
+          const spo2Delta = Math.random() > 0.9 ? -1 : (Math.random() > 0.9 ? 1 : 0);
+          const newSpo2 = Math.min(100, Math.max(isCritical ? 80 : 92, trip.liveVitals.spo2 + spo2Delta));
 
           return {
             ...trip,
             currentEtaMinutes: parseFloat(newEta.toFixed(1)),
-            progress: progress,
+            progress,
             liveVitals: {
               ...trip.liveVitals,
-              heartRate: newHr,
-              spo2: newSpo2,
+              heartRate: Math.round(newHr),
+              spo2: Math.round(newSpo2),
               lastUpdated: Date.now()
-            }
+            },
+            status: newEta <= 0 ? 'ARRIVED' : 'EN_ROUTE'
           };
         })
       );
-    }, 2000); // Update every 2 seconds
+    }, 2000);
 
     return () => clearInterval(interval);
   }, [activeTrips.length]);
 
   const handleLogin = (role: string) => {
-    setUser({
-      id: 'u1',
-      name: 'User',
-      role: role as any
-    });
-
-    // Default view and Restrictions based on role
+    setUser({ id: 'u-' + Math.random().toString(36).substr(2, 4), name: 'Staff User', role: role as any });
     if (role === 'PARAMEDIC') setCurrentView(ViewMode.AMBULANCE);
     else if (role === 'HOSPITAL_ADMIN') setCurrentView(ViewMode.HOSPITAL);
     else if (role === 'TOLL_OPERATOR') setCurrentView(ViewMode.TOLL);
-  };
-
-  const handleLogout = () => {
-    setUser(null);
   };
 
   const handleStartTrip = (hospitalId: string, patientData: PatientData, triage: TriageResult) => {
@@ -94,8 +84,8 @@ const App: React.FC = () => {
       progress: 0,
       status: 'EN_ROUTE',
       liveVitals: {
-        heartRate: Math.floor(Math.random() * (120 - 80) + 80),
-        spo2: 98,
+        heartRate: triage.severity === Severity.CRITICAL ? 110 : 85,
+        spo2: triage.severity === Severity.CRITICAL ? 92 : 98,
         bpSystolic: 120,
         bpDiastolic: 80,
         lastUpdated: Date.now()
@@ -104,57 +94,41 @@ const App: React.FC = () => {
 
     setActiveTrips(prev => [newTrip, ...prev]);
 
-    // Simulate Toll Alerts generating based on the route
-    const newTollAlert: TollAlert = {
+    setTollAlerts(prev => [{
       id: Math.random().toString(36).substr(2, 9),
       tollName: MOCK_TOLLS[Math.floor(Math.random() * MOCK_TOLLS.length)],
       ambulanceId: newTrip.ambulanceId,
-      lane: `Lane ${Math.floor(Math.random() * 5) + 1}`,
+      lane: 'Emergency Lane 1',
       timestamp: Date.now(),
       cleared: true
-    };
-
-    setTollAlerts(prev => [newTollAlert, ...prev]);
+    }, ...prev]);
   };
 
-  if (!user) {
-    return <LoginView onLogin={handleLogin} />;
-  }
+  if (!user) return <LoginView onLogin={handleLogin} />;
+
+  const isAuthorized = () => {
+    if (currentView === ViewMode.AMBULANCE) return user.role === 'PARAMEDIC';
+    if (currentView === ViewMode.HOSPITAL) return user.role === 'HOSPITAL_ADMIN';
+    if (currentView === ViewMode.TOLL) return user.role === 'TOLL_OPERATOR';
+    return false;
+  };
 
   return (
-    <Layout 
-      currentView={currentView} 
-      setView={setCurrentView} 
-      onLogout={handleLogout}
-      userRole={user.role}
-    >
-      {/* Conditionally render views based on role */}
-      {currentView === ViewMode.AMBULANCE && user.role === 'PARAMEDIC' && (
-        <AmbulanceView 
-          onStartTrip={handleStartTrip}
-          mockHospitals={MOCK_HOSPITALS}
-        />
-      )}
-      
-      {currentView === ViewMode.HOSPITAL && user.role === 'HOSPITAL_ADMIN' && (
-        <HospitalView 
-          incomingTrips={activeTrips}
-        />
-      )}
-      
-      {currentView === ViewMode.TOLL && user.role === 'TOLL_OPERATOR' && (
-        <TollView 
-          alerts={tollAlerts}
-        />
-      )}
-
-      {/* Fallback for unauthorized access attempt (though navigation prevents this) */}
-      {((currentView === ViewMode.AMBULANCE && user.role !== 'PARAMEDIC') ||
-        (currentView === ViewMode.HOSPITAL && user.role !== 'HOSPITAL_ADMIN') ||
-        (currentView === ViewMode.TOLL && user.role !== 'TOLL_OPERATOR')) && (
-          <div className="flex items-center justify-center h-full text-slate-400">
-             Access Restricted
+    <Layout currentView={currentView} setView={setCurrentView} onLogout={() => setUser(null)} userRole={user.role}>
+      {isAuthorized() ? (
+        <>
+          {currentView === ViewMode.AMBULANCE && <AmbulanceView onStartTrip={handleStartTrip} mockHospitals={MOCK_HOSPITALS} />}
+          {currentView === ViewMode.HOSPITAL && <HospitalView incomingTrips={activeTrips} />}
+          {currentView === ViewMode.TOLL && <TollView alerts={tollAlerts} />}
+        </>
+      ) : (
+        <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400 animate-fade-in">
+          <div className="bg-slate-100 p-8 rounded-full mb-6 text-slate-300">
+            <Lock size={64} />
           </div>
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Access Restricted</h2>
+          <p className="max-w-xs text-center text-sm">Your credentials do not permit access to this department module.</p>
+        </div>
       )}
     </Layout>
   );
